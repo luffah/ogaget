@@ -45,4 +45,4 @@ By default, the `ogaget.py` store the following keys :
 Values are collected by parsing HTTP responses (html) of the specified url with XML XPath.
 
 # Timesheet of free software worker
-luffah : This tool (conception & development) cost 1 day at initial commit.
+luffah : This tool (conception & development) cost 10 hours at initial commit.
