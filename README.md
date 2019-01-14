@@ -44,3 +44,5 @@ By default, the `ogaget.py` store the following keys :
 # How it works ?
 Values are collected by parsing HTTP responses (html) of the specified url with XML XPath.
 
+# Timesheet of free software worker
+This tool (conception & development) cost 1 day.
