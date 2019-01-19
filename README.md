@@ -1,4 +1,6 @@
 # ogaget
+Note: this tool is an alternative to the creation of collection in OGA and may not be adapted for all usage.
+
 A tool to store credits related to media from OpenGameArt.org
 
 # Usage
