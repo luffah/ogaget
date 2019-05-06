@@ -15,6 +15,7 @@
     ```
 """
 import re
+INLINE_KEYS = [ 'license' ]
 
 def _get_content(fname):
     ret = []
@@ -36,19 +37,27 @@ def write(fname, infos, order):
     ret = []
     for k in order:
         if k in infos:
-            ret.append("%s: %s\n" % (
-                k,
-                infos[k] if isinstance(infos[k], str)
-                else ",".join(infos[k])
-            ))
+            if isinstance(infos[k], str):
+                ret.append("%s: %s\n" % (k, infos[k]))
+            elif len(infos[k]) == 1:
+                ret.append("%s: %s\n" % (
+                    k, infos[k][0]))
+            elif k in INLINE_KEYS:
+                ret.append("%s: %s\n" % (
+                    k, ','.join(infos[k])))
+            else:
+                ret.append("%s:\n %s\n" % (
+                    k, '\n '.join(infos[k])))
     print("> %s" % fname)
     _write(fname, ret)
 
 
-def parse(fpath, with_order=True):
+def parse(fpath, with_order=True, return_ordered_keys=False):
     """
     Parse a credit file.
     return a dictionnary ({key:[list(values), order of appearance]}
+    if with_order is True
+    else a dictionnary key:values
     """
     def _to_list(line):
         return [  # remove empty strings in values separated by ;
@@ -62,6 +71,7 @@ def parse(fpath, with_order=True):
     tmpparsed = {}
     order = 0
     meta = False
+    with_order = with_order or return_ordered_keys
     for line in _get_content(fpath):
         if line.startswith('#'):
             continue
@@ -102,4 +112,10 @@ def parse(fpath, with_order=True):
     if meta:
         parsed[key] = (tmpparsed, order) if with_order else tmpparsed
 
-    return parsed
+    if return_ordered_keys:
+        return (
+            {k: v[0] for k,v in parsed.items()},
+            sorted(parsed.keys(), key=lambda k: parsed[k][1])
+        )
+    else:
+        return parsed
