@@ -30,40 +30,45 @@ from common.credit_file import parse, write, _get_content
 
 ALWAYS_GET = False
 
-KEYS_WANTED = ['title', 'artist', 'url artist', 'url file', 'url', 'date',
-               'license']
+KEYS_HEADER = [
+        'title', 'artist', 'date', 'license',
+        'url', 'url artist', 'url file',
+        'media ext', 'media file'
+        ]
+KEYS_FOOTER = [
+        'comment'
+        ]
 
 KEYS_POSTPROC = {
     'url artist': lambda val: ['https://opengameart.org' + v for v in val]
 }
 
+FILES_XPATH =  './/span[@class="file"]/a/@href'
 KEYS_XPATH = {
+    'title': (
+        './/div[contains(@class,"field-name-title")]'
+        '/div[contains(@class,"field-items")]'
+        '/div[contains(@class,"field-item")]'),
     'artist': (
         './/div[contains(@class,"field-name-author-submitter")]'
         '/div[contains(@class,"field-items")]'
         '/div[contains(@class,"field-item")]'
         '/span[@class="username"]'),
-    'url artist': (
-        './/div[contains(@class,"field-name-author-submitter")]'
-        '/div[contains(@class,"field-items")]'
-        '/div[contains(@class,"field-item")]'
-        '/span[@class="username"]/a/@href'),
     'date': (
         './/div[contains(@class,"field-name-author-submitter")]'
         '/following-sibling::div[contains(@class,"field-name-post-date")]'
-        '/div[contains(@class,"field-items")]'
-        '/div[contains(@class,"field-item")]'),
-    'title': (
-        './/div[contains(@class,"field-name-title")]'
         '/div[contains(@class,"field-items")]'
         '/div[contains(@class,"field-item")]'),
     'license': (
         './/div[contains(@class,"field-name-field-art-licenses")]'
         '/div[contains(@class,"field-items")]'
         '/div[contains(@class,"field-item")]'),
-    'files': './/span[@class="file"]/a/@href'
+    'url artist': (
+        './/div[contains(@class,"field-name-author-submitter")]'
+        '/div[contains(@class,"field-items")]'
+        '/div[contains(@class,"field-item")]'
+        '/span[@class="username"]/a/@href'),
 }
-
 
 def main(creditfile='', url='', html='', mediafile='', dl=False):
     """ Fetch missing datas / credit informations """
@@ -77,6 +82,23 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
             return None
         a_list = list(gen)
         return a_list[0] if a_list else None
+
+    def choose(files):
+        # TODO fzy like chooser
+        if len(files) == 1:
+            return files[0]
+        else:
+            print('\n'.join([
+                "%d : %s" % (idx, n.replace('%20', ' '))
+                for (idx, n) in enumerate(files)
+            ]))
+            idx = None
+            while not isinstance(idx, int):
+                try:
+                    idx = int(input('i (0 =< i =< %s) ? ' % len(files)))
+                except ValueError:
+                    print('give number or hit Ctrl+c')
+            return files[idx]
 
     def _update_refcredit():
         # refresh refcredit content, from url or html
@@ -100,27 +122,12 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
             return xpathresult
 
         doc = mkxml.fromstring(html_content)
-        for key in KEYS_WANTED:
-            postproc = KEYS_POSTPROC.get(key, lambda a: a)
-            if key in KEYS_XPATH:
-                refcredit[key] = postproc(txtt(doc.xpath(KEYS_XPATH[key])))
         if not refcredit.get('url file'):
-            files = txtt(doc.xpath(KEYS_XPATH['files']))
-            if len(files) == 1:
-                refcredit['url file'] = files[0]
-            else:
-                print('\n'.join([
-                    "%d : %s" % (idx, n.replace('%20', ' '))
-                    for (idx, n) in enumerate(files)
-                ]))
-                idx = None
-                while not isinstance(idx, int):
-                    try:
-                        idx = int(input('i (0 =< i =< %s) ? ' % len(files)))
-                    except ValueError:
-                        print('give number or hit Ctrl+c')
-                        exit()
-                refcredit['url file'] = files[idx]
+            files = txtt(doc.xpath(FILES_XPATH))
+            refcredit['url file'] = choose(files)
+        for key in KEYS_XPATH:
+            postproc = KEYS_POSTPROC.get(key, lambda a: a)
+            refcredit[key] = postproc(txtt(doc.xpath(KEYS_XPATH[key])))
 
     name = (
         _first(splitext(basename(creditfile))) or
@@ -139,65 +146,67 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
     if isfile(mediafile) and not refcredit:
         print('Media file only (%s) is not enought to create a credit file' % mediafile)
         return
-    media_file_to_extract = _first(refcredit.get('media file', ''))
     file_to_dl = _first(refcredit.get('url file'))
     if not file_to_dl:
         print("Missing info 'url file' in %s" % creditfile)
         return
-    media_ext = (_first(refcredit.get('media ext')) or
-                 splitext(media_file_to_extract or file_to_dl)[1])
-    # ensure mediafile (the media) is defined if it can be
-    if not mediafile:
-        mediafile = name + media_ext
+
+    # set dl file name according to its type
     dl_mimetype = mimetypes.guess_type(file_to_dl)[0]
     if dl_mimetype and (
             'audio' in dl_mimetype or
             'image' in dl_mimetype
             ):
+        media_ext = (_first(refcredit.get('media ext')) or
+                splitext(file_to_dl)[1])
+        if not mediafile:
+            mediafile = name + media_ext
         dl_file_name = mediafile
         print('media  : %s' % mediafile)
     else:
         dl_file_name = ('%s-%s' % (
             _first(refcredit['artist']), basename(file_to_dl))
             ).replace('%20',' ')
-        # FIXME : if mediafile not found,
-        # shall ask user if needed which file to download / credit
         print('archive: %s' % dl_file_name)
-        print('media  ? %s' % mediafile)
 
-    if isfile(mediafile):
-        print("%s already exists" % (mediafile))
-    # we can now try a download with known informations
-    else:
-        if file_to_dl and download_requested and not isfile(dl_file_name):
-            # print(file_to_dl)
-            download(file_to_dl, dl_file_name)
+    if file_to_dl and download_requested and not isfile(dl_file_name):
+        download(file_to_dl, dl_file_name)
 
-        if not isfile(dl_file_name):
-            print('No media or archive found : %s'
-                  % (dl_file_name))
-            if download_requested:
-                print('Download failed. Check url or internet connection.')
-            else:
-                print('Try -dl to download')
-            return
+    if not isfile(dl_file_name):
+        print('No media or archive found : %s'
+              % (dl_file_name))
+        if download_requested:
+            print('Download failed. Check url or internet connection.')
+        else:
+            print('Try -dl to download')
+        return
 
-        if dl_file_name == mediafile:
-            pass
-        elif tarfile.is_tarfile(dl_file_name):
-            if not media_file_to_extract:
-                # FIXME : a choice list
-                print("'media file' key shall be defined to extract the file")
-                return
-            print('shall extract %s from %s' %
-                  (media_file_to_extract, dl_file_name))
-            tar = tarfile.open(dl_file_name)
-            try:
-                tar._extract_member(tar.getmember(media_file_to_extract),
-                                    mediafile)
-            except KeyError:
-                print('No media found')
-                exit()
+    if dl_file_name == mediafile:
+        pass
+    elif tarfile.is_tarfile(dl_file_name):
+        media_file_to_extract = _first(refcredit.get('media file', ''))
+        tar = tarfile.open(dl_file_name)
+        if not media_file_to_extract:
+            media_exts = refcredit.get('media ext', [])
+            media_file_to_extract = choose([
+                tarinfo.name
+                for tarinfo in tar.getmembers()
+                if tarinfo.type == tarfile.REGTYPE and
+                (not media_exts or splitext(tarinfo.name)[1] in media_exts)
+            ])
+        print('shall extract %s from %s' %
+              (media_file_to_extract, dl_file_name))
+        try:
+            media_ext = splitext(media_file_to_extract)[1]
+            if not mediafile:
+                mediafile = name + media_ext
+            print('> %s' % mediafile)
+            tar._extract_member(tar.getmember(media_file_to_extract),
+                                mediafile)
+            refcredit['media file'] = media_file_to_extract
+        except KeyError:
+            print('No media found')
+            exit()
 
     # something is wrong, explian what
     if not name:
@@ -205,11 +214,10 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
             print("It looks like there is no media related to this page.")
         return
 
-    # write to the corresponding creditfile (and try not to change order)
     if refcredit_orig != refcredit:
-        write(creditfile, refcredit, ordered_keys + [
-            k for k in KEYS_WANTED if k not in ordered_keys
-        ])
+        write(creditfile, refcredit, KEYS_HEADER + [
+            k for k in ordered_keys if k not in (KEYS_HEADER + KEYS_FOOTER)
+            ] + KEYS_FOOTER)
 
 if __name__ == '__main__':
     args = argparse.Namespace(
