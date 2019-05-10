@@ -20,7 +20,9 @@ import sys
 import signal
 from os.path import isfile, dirname, basename, splitext
 from os import listdir
+import shutil
 import tarfile
+import zipfile
 import argparse
 import mimetypes
 import lxml.html as mkxml
@@ -32,19 +34,19 @@ from common.credit_file import parse, write, _get_content
 ALWAYS_GET = False
 
 KEYS_HEADER = [
-        'title', 'artist', 'date', 'license',
-        'url', 'url artist', 'url file',
-        'media ext', 'media file'
-        ]
+    'title', 'artist', 'date', 'license',
+    'url', 'url artist', 'url file',
+    'media ext', 'media file'
+]
 KEYS_FOOTER = [
-        'comment'
-        ]
+    'comment'
+]
 
 KEYS_POSTPROC = {
     'url artist': lambda val: ['https://opengameart.org' + v for v in val]
 }
 
-FILES_XPATH =  './/span[@class="file"]/a/@href'
+FILES_XPATH = './/span[@class="file"]/a/@href'
 KEYS_XPATH = {
     'title': (
         './/div[contains(@class,"field-name-title")]'
@@ -70,6 +72,7 @@ KEYS_XPATH = {
         '/div[contains(@class,"field-item")]'
         '/span[@class="username"]/a/@href'),
 }
+
 
 def main(creditfile='', url='', html='', mediafile='', dl=False):
     """ Fetch missing datas / credit informations """
@@ -115,12 +118,12 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
 
     name = (
         _first(splitext(basename(creditfile))) or
-        _first(splitext(basename(mediafile)))  or
+        _first(splitext(basename(mediafile))) or
         _first(splitext(basename(html)))
     )
 
     def keyboardInterruptHandler(signal, frame):
-        print("ogaget has been interrupted while %s for '%s'" % (step,name) )
+        print("ogaget has been interrupted while %s for '%s'" % (step, name))
         exit(0)
 
     signal.signal(signal.SIGINT, keyboardInterruptHandler)
@@ -151,9 +154,9 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
     if dl_mimetype and (
             'audio' in dl_mimetype or
             'image' in dl_mimetype
-            ):
+    ):
         media_ext = (_first(refcredit.get('media ext')) or
-                splitext(file_to_dl)[1])
+                     splitext(file_to_dl)[1])
         if not mediafile:
             mediafile = name + media_ext
         dl_file_name = mediafile
@@ -162,7 +165,7 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
     else:
         dl_file_name = ('%s-%s' % (
             _first(refcredit['artist']), basename(file_to_dl))
-            ).replace('%20',' ')
+        ).replace('%20', ' ')
         print('archive: %s' % dl_file_name)
         step = 'downloading archive file'
 
@@ -180,27 +183,50 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
 
     if dl_file_name == mediafile:
         pass
-    elif tarfile.is_tarfile(dl_file_name):
+    else:
         step = 'extracting file'
         media_file_to_extract = _first(refcredit.get('media file', ''))
-        tar = tarfile.open(dl_file_name)
-        if not media_file_to_extract:
-            media_exts = refcredit.get('media ext', [])
-            media_file_to_extract = choose([
-                tarinfo.name
-                for tarinfo in tar.getmembers()
-                if tarinfo.type == tarfile.REGTYPE and
-                (not media_exts or splitext(tarinfo.name)[1] in media_exts)
-            ], "'media file' for '%s'" % name)
-        print('shall extract %s from %s' %
-              (media_file_to_extract, dl_file_name))
-        try:
+        media_exts = refcredit.get('media ext', [])
+
+        def get_media_file_name():
+            print('shall extract %s from %s' %
+                  (media_file_to_extract, dl_file_name))
             media_ext = splitext(media_file_to_extract)[1]
-            if not mediafile:
-                mediafile = name + media_ext
-            print('> %s' % mediafile)
-            tar._extract_member(tar.getmember(media_file_to_extract),
-                                mediafile)
+            tgt = mediafile or (name + media_ext)
+            print('> %s' % tgt)
+            return tgt
+
+        def test_extension(name):
+            return (not media_exts or splitext(name)[1] in media_exts)
+
+        try:
+            if tarfile.is_tarfile(dl_file_name):
+                tar = tarfile.open(dl_file_name)
+                if not media_file_to_extract:
+                    media_file_to_extract = choose([
+                        info.name for info in tar.getmembers()
+                        if info.type == tarfile.REGTYPE
+                        and test_extension(info.name)
+                    ], "'media file' for '%s'" % name)
+
+                tar._extract_member(tar.getmember(media_file_to_extract),
+                                    get_media_file_name())
+
+            elif zipfile.is_zipfile(dl_file_name):
+                zipf = zipfile.ZipFile(dl_file_name)
+                if not media_file_to_extract:
+                    media_file_to_extract = choose([
+                        info.filename for info in zipf.filelist
+                        if info.filename[-1] != '/'
+                        and test_extension(info.filename)
+                    ], "'media file' for '%s'" % name)
+                with zipf.open(zipf.getinfo(media_file_to_extract)) as source, \
+                        open(get_media_file_name(), "wb") as target:
+                    shutil.copyfileobj(source, target)
+            else:
+                print('archive format is not supported')
+                raise KeyError
+
             refcredit['media file'] = media_file_to_extract
         except KeyError:
             print('No media found')
@@ -216,26 +242,28 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
     if refcredit_orig != refcredit:
         write(creditfile, refcredit, KEYS_HEADER + [
             k for k in ordered_keys if k not in (KEYS_HEADER + KEYS_FOOTER)
-            ] + KEYS_FOOTER)
+        ] + KEYS_FOOTER)
+
 
 if __name__ == '__main__':
     args = argparse.Namespace(
-            creditfile='', url='', html='', mediafile='', dl=False)
+        creditfile='', url='', html='', mediafile='', dl=False)
+
     def _use_argparse():
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('-c', action="store", dest="creditfile",
-                default=args.creditfile,
-                help="a file with 'key: comma-separated values'* as content")
+                            default=args.creditfile,
+                            help="a file with 'key: comma-separated values'* as content")
         group = parser.add_mutually_exclusive_group()
         group.add_argument('-url', action="store", default=args.url,
-                help="the url of page presenting the media")
+                           help="the url of page presenting the media")
         group.add_argument('-html', action="store", default=args.html,
-                help="an alternative of the url (for testing)")
+                           help="an alternative of the url (for testing)")
         parser.add_argument('-dl', action="store_true",
-                help="download the media (choices are prompted if many are found)")
+                            help="download the media (choices are prompted if many are found)")
         parser.add_argument('-m', action="store", dest='mediafile',
-                default=args.mediafile,
-                help="the mediafile (used for naming credit file)")
+                            default=args.mediafile,
+                            help="the mediafile (used for naming credit file)")
 
         if not sys.argv[1:]:
             parser.print_help()
@@ -259,4 +287,3 @@ if __name__ == '__main__':
                 args.mediafile = i
 
     main(**vars(args))
-

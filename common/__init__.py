@@ -38,9 +38,10 @@ class FuzzySelector(object):
         matched = []
         self.suggestions = list(enumerate(options))
         if self.input:
-            regex = re.compile('.*?'.join(self.input))
+            regex = re.compile('.*'.join(re.escape(self.input)),
+                    re.IGNORECASE)
             for idx, l in self.suggestions:
-                match = regex.search(l, re.IGNORECASE)
+                match = regex.search(l)
                 if match:
                     matched.append(
                         (len(match.group()), match.start(), l, idx))
