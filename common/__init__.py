@@ -3,7 +3,7 @@ import re
 import curses
 import os
 
-def choose(files, title, curses=True):
+def choose(files, title, defaultinput='', curses=True):
     if len(files) == 1:
         return files[0]
     else:
@@ -11,7 +11,8 @@ def choose(files, title, curses=True):
                                                                     "'").replace('%21', ''))[-1]
                         for f in files]
         if curses:
-            return files[FuzzySelector().get(pretty_files, title)]
+            return files[FuzzySelector().get(pretty_files, title,
+                defaultinput=defaultinput or '')]
         else:
             print('\n'.join([
                 "%d : %s" % (idx+1, n)
@@ -48,6 +49,7 @@ class FuzzySelector(object):
         if matched:
             self.suggestions = [(idx, l) for _, _, l, idx in sorted(matched)]
         self.idx = self.suggestions[0][0]
+        return len(matched)
 
     def redraw(self, screen):
         screen.clear()
@@ -81,11 +83,6 @@ class FuzzySelector(object):
         curses.use_default_colors()
         curses.curs_set(0)
 
-        self.input = ''
-        self.update(self.items)
-        self.idx = 0
-        self.visible_idx = 0
-
         while True:
             self.redraw(screen)
             c = screen.getch()
@@ -104,7 +101,12 @@ class FuzzySelector(object):
                     self.input += chr(c)
                 self.update(self.items)
 
-    def get(self, items, title=None):
+    def get(self, items, title=None, defaultinput=''):
         self.title = title
         self.items = items
+        self.input = defaultinput
+        self.idx = 0
+        self.visible_idx = 0
+        if not self.update(self.items):
+            self.input = ''
         return curses.wrapper(self.curse_ui)

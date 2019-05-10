@@ -18,8 +18,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import sys
 import signal
-from os.path import isfile, dirname, basename, splitext
-from os import listdir
+from os.path import isfile, dirname, basename, splitext, isdir
+from os import listdir, chdir
 import shutil
 import tarfile
 import zipfile
@@ -74,7 +74,19 @@ KEYS_XPATH = {
 }
 
 
-def main(creditfile='', url='', html='', mediafile='', dl=False):
+def main(creditfile='', url='', html='', mediafile='',
+         directory='', dl=False):
+    if directory:
+       chdir(directory)
+       for f in listdir('.'):
+           if isfile(f) and f.endswith('.txt'):
+               main(creditfile=f, dl=dl)
+           elif isdir(f):
+               main(directory=f, dl=dl)
+       chdir('..')
+       return
+    print('*' * 34)
+
     """ Fetch missing datas / credit informations """
     file_to_dl = False
     download_requested = ALWAYS_GET or dl
@@ -111,7 +123,8 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
         doc = mkxml.fromstring(html_content)
         if not refcredit.get('url file'):
             files = txtt(doc.xpath(FILES_XPATH))
-            refcredit['url file'] = choose(files, "'url file' for '%s'" % name)
+            refcredit['url file'] = choose(files, "'url file' for '%s'" % name,
+                    defaultinput=name)
         for key in KEYS_XPATH:
             postproc = KEYS_POSTPROC.get(key, lambda a: a)
             refcredit[key] = postproc(txtt(doc.xpath(KEYS_XPATH[key])))
@@ -207,7 +220,8 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
                         info.name for info in tar.getmembers()
                         if info.type == tarfile.REGTYPE
                         and test_extension(info.name)
-                    ], "'media file' for '%s'" % name)
+                    ], "'media file' for '%s'" % name,
+                    defaultinput=name)
 
                 tar._extract_member(tar.getmember(media_file_to_extract),
                                     get_media_file_name())
@@ -219,7 +233,8 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
                         info.filename for info in zipf.filelist
                         if info.filename[-1] != '/'
                         and test_extension(info.filename)
-                    ], "'media file' for '%s'" % name)
+                    ], "'media file' for '%s'" % name,
+                    defaultinput=name)
                 with zipf.open(zipf.getinfo(media_file_to_extract)) as source, \
                         open(get_media_file_name(), "wb") as target:
                     shutil.copyfileobj(source, target)
@@ -247,7 +262,7 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
 
 if __name__ == '__main__':
     args = argparse.Namespace(
-        creditfile='', url='', html='', mediafile='', dl=False)
+            creditfile='', url='', html='', mediafile='', directory='', dl=False)
 
     def _use_argparse():
         parser = argparse.ArgumentParser(description=__doc__)
@@ -261,29 +276,35 @@ if __name__ == '__main__':
                            help="an alternative of the url (for testing)")
         parser.add_argument('-dl', action="store_true",
                             help="download the media (choices are prompted if many are found)")
+        parser.add_argument('--recursive', action="store", dest="directory",
+                            help="act recursively")
         parser.add_argument('-m', action="store", dest='mediafile',
                             default=args.mediafile,
                             help="the mediafile (used for naming credit file)")
 
-        if not sys.argv[1:]:
+        args = parser.parse_args()
+        if not sys.argv[1:] or (args.directory and not isdir(args.directory)):
             parser.print_help()
-        return parser.parse_args()
+        return args
 
     if not sys.argv[1:] or sys.argv[1].startswith('-'):
         args = _use_argparse()
     else:
+        recursive = '--recursive' in sys.argv
         for i in sys.argv[1:]:
             if i == '-h':
                 _use_argparse()
-            if i in ['-dl']:
-                args.dl = i
+            elif i in ['-dl']:
+                setattr(args, i.replace('-',''), True)
             elif not args.creditfile and isfile(i) and i.endswith('.txt'):
                 args.creditfile = i
             elif not args.html and isfile(i) and i.endswith('.html'):
                 args.html = i
             elif not args.url and '://' in i:
                 args.url = i
-            elif not args.mediafile:
+            elif not args.mediafile and isfile(i):
                 args.mediafile = i
+            elif recursive and isdir(i):
+                args.directory = i
 
     main(**vars(args))
