@@ -16,8 +16,8 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 import sys
+import signal
 from os.path import isfile, dirname, basename, splitext
 from os import listdir
 import tarfile
@@ -25,6 +25,7 @@ import argparse
 import mimetypes
 import lxml.html as mkxml
 from lxml.html import HtmlElement as Element
+from common import choose
 from common.www import request_url, download
 from common.credit_file import parse, write, _get_content
 
@@ -83,23 +84,6 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
         a_list = list(gen)
         return a_list[0] if a_list else None
 
-    def choose(files):
-        # TODO fzy like chooser
-        if len(files) == 1:
-            return files[0]
-        else:
-            print('\n'.join([
-                "%d : %s" % (idx, n.replace('%20', ' '))
-                for (idx, n) in enumerate(files)
-            ]))
-            idx = None
-            while not isinstance(idx, int):
-                try:
-                    idx = int(input('i (0 =< i =< %s) ? ' % len(files)))
-                except ValueError:
-                    print('give number or hit Ctrl+c')
-            return files[idx]
-
     def _update_refcredit():
         # refresh refcredit content, from url or html
         if html:
@@ -124,7 +108,7 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
         doc = mkxml.fromstring(html_content)
         if not refcredit.get('url file'):
             files = txtt(doc.xpath(FILES_XPATH))
-            refcredit['url file'] = choose(files)
+            refcredit['url file'] = choose(files, "'url file' for '%s'" % name)
         for key in KEYS_XPATH:
             postproc = KEYS_POSTPROC.get(key, lambda a: a)
             refcredit[key] = postproc(txtt(doc.xpath(KEYS_XPATH[key])))
@@ -134,14 +118,24 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
         _first(splitext(basename(mediafile)))  or
         _first(splitext(basename(html)))
     )
+
+    def keyboardInterruptHandler(signal, frame):
+        print("ogaget has been interrupted while %s for '%s'" % (step,name) )
+        exit(0)
+
+    signal.signal(signal.SIGINT, keyboardInterruptHandler)
+    step = 'parsing datas'
+
     # first get refcredit content
     creditfile = creditfile or (("%s.txt" % name) if name else '')
+
     (refcredit_orig, ordered_keys) = (
         parse(creditfile, return_ordered_keys=True)
         if creditfile else ({}, [])
     )
     refcredit = refcredit_orig.copy()
     url = url or _first(refcredit.get('url'))
+    step = 'fetching datas from url'
     _update_refcredit()
     if isfile(mediafile) and not refcredit:
         print('Media file only (%s) is not enought to create a credit file' % mediafile)
@@ -151,6 +145,7 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
         print("Missing info 'url file' in %s" % creditfile)
         return
 
+    step = 'guessing mimetypes'
     # set dl file name according to its type
     dl_mimetype = mimetypes.guess_type(file_to_dl)[0]
     if dl_mimetype and (
@@ -163,11 +158,13 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
             mediafile = name + media_ext
         dl_file_name = mediafile
         print('media  : %s' % mediafile)
+        step = 'downloading media file'
     else:
         dl_file_name = ('%s-%s' % (
             _first(refcredit['artist']), basename(file_to_dl))
             ).replace('%20',' ')
         print('archive: %s' % dl_file_name)
+        step = 'downloading archive file'
 
     if file_to_dl and download_requested and not isfile(dl_file_name):
         download(file_to_dl, dl_file_name)
@@ -184,6 +181,7 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
     if dl_file_name == mediafile:
         pass
     elif tarfile.is_tarfile(dl_file_name):
+        step = 'extracting file'
         media_file_to_extract = _first(refcredit.get('media file', ''))
         tar = tarfile.open(dl_file_name)
         if not media_file_to_extract:
@@ -193,7 +191,7 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
                 for tarinfo in tar.getmembers()
                 if tarinfo.type == tarfile.REGTYPE and
                 (not media_exts or splitext(tarinfo.name)[1] in media_exts)
-            ])
+            ], "'media file' for '%s'" % name)
         print('shall extract %s from %s' %
               (media_file_to_extract, dl_file_name))
         try:
@@ -214,6 +212,7 @@ def main(creditfile='', url='', html='', mediafile='', dl=False):
             print("It looks like there is no media related to this page.")
         return
 
+    step = 'writing changes'
     if refcredit_orig != refcredit:
         write(creditfile, refcredit, KEYS_HEADER + [
             k for k in ordered_keys if k not in (KEYS_HEADER + KEYS_FOOTER)
@@ -258,4 +257,6 @@ if __name__ == '__main__':
                 args.url = i
             elif not args.mediafile:
                 args.mediafile = i
+
     main(**vars(args))
+
