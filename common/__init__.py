@@ -2,14 +2,24 @@
 import re
 import curses
 import os
+from urllib.parse import unquote
+
+def first(gen):
+    if isinstance(gen, str):
+        return gen
+    if not gen:
+        return None
+    a_list = list(gen)
+    return a_list[0] if a_list else None
+
+def get_fname(fname):
+    return os.path.split(unquote(fname))[-1]
 
 def choose(files, title, defaultinput='', curses=True):
     if len(files) == 1:
         return files[0]
     else:
-        pretty_files = [os.path.split(f.replace('%20', ' ').replace('%27',
-                                                                    "'").replace('%21', ''))[-1]
-                        for f in files]
+        pretty_files = [get_fname(f) for f in files]
         if curses:
             return files[FuzzySelector().get(pretty_files, title,
                 defaultinput=defaultinput or '')]

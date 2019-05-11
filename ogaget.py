@@ -20,21 +20,19 @@ import sys
 import signal
 from os.path import isfile, dirname, basename, splitext, isdir
 from os import listdir, chdir
-import shutil
-import tarfile
-import zipfile
 import argparse
 import mimetypes
 import lxml.html as mkxml
 from lxml.html import HtmlElement as Element
-from common import choose
+from common import choose, first, get_fname
+from common.unarchiver import Unarchiver
 from common.www import request_url, download
 from common.credit_file import parse, write, _get_content
 
 ALWAYS_GET = False
 
 KEYS_HEADER = [
-    'title', 'artist', 'date', 'license',
+    'title', 'collection', 'sub collection', 'artist', 'date', 'license',
     'url', 'url artist', 'url file',
     'media ext', 'media file'
 ]
@@ -48,7 +46,7 @@ KEYS_POSTPROC = {
 
 FILES_XPATH = './/span[@class="file"]/a/@href'
 KEYS_XPATH = {
-    'title': (
+    'title~': (
         './/div[contains(@class,"field-name-title")]'
         '/div[contains(@class,"field-items")]'
         '/div[contains(@class,"field-item")]'),
@@ -91,13 +89,22 @@ def main(creditfile='', url='', html='', mediafile='',
     file_to_dl = False
     download_requested = ALWAYS_GET or dl
 
-    def _first(gen):
-        if isinstance(gen, str):
-            return gen
-        if not gen:
-            return None
-        a_list = list(gen)
-        return a_list[0] if a_list else None
+    def _get_title(fname):
+        return splitext(get_fname(first(fname)).replace('_', ' '))[0]
+
+    def _update_title_for_collection(files, ctx):
+        titles = set([splitext(f)[0] for f in files])
+        if len(titles) > 1:
+            if ctx == 'url':
+                refcredit['collection~'] = refcredit['title~']
+                refcredit['title~'] = _get_title(refcredit['url file'])
+            elif ctx == 'archive':
+                if 'collection~' in refcredit:
+                    refcredit['sub collection'] = _get_title(refcredit['url file'])
+                else:
+                    refcredit['collection~'] = refcredit['title~']
+
+                refcredit['title~'] = _get_title(refcredit['media file'])
 
     def _update_refcredit():
         # refresh refcredit content, from url or html
@@ -121,18 +128,19 @@ def main(creditfile='', url='', html='', mediafile='',
             return xpathresult
 
         doc = mkxml.fromstring(html_content)
+        files = txtt(doc.xpath(FILES_XPATH))
         if not refcredit.get('url file'):
-            files = txtt(doc.xpath(FILES_XPATH))
             refcredit['url file'] = choose(files, "'url file' for '%s'" % name,
                     defaultinput=name)
         for key in KEYS_XPATH:
             postproc = KEYS_POSTPROC.get(key, lambda a: a)
             refcredit[key] = postproc(txtt(doc.xpath(KEYS_XPATH[key])))
+        _update_title_for_collection(files, 'url')
 
     name = (
-        _first(splitext(basename(creditfile))) or
-        _first(splitext(basename(mediafile))) or
-        _first(splitext(basename(html)))
+        first(splitext(basename(creditfile))) or
+        first(splitext(basename(mediafile))) or
+        first(splitext(basename(html)))
     )
 
     def keyboardInterruptHandler(signal, frame):
@@ -150,13 +158,13 @@ def main(creditfile='', url='', html='', mediafile='',
         if creditfile else ({}, [])
     )
     refcredit = refcredit_orig.copy()
-    url = url or _first(refcredit.get('url'))
+    url = url or first(refcredit.get('url'))
     step = 'fetching datas from url'
     _update_refcredit()
     if isfile(mediafile) and not refcredit:
         print('Media file only (%s) is not enought to create a credit file' % mediafile)
         return
-    file_to_dl = _first(refcredit.get('url file'))
+    file_to_dl = first(refcredit.get('url file'))
     if not file_to_dl:
         print("Missing info 'url file' in %s" % creditfile)
         return
@@ -168,7 +176,7 @@ def main(creditfile='', url='', html='', mediafile='',
             'audio' in dl_mimetype or
             'image' in dl_mimetype
     ):
-        media_ext = (_first(refcredit.get('media ext')) or
+        media_ext = (first(refcredit.get('media ext')) or
                      splitext(file_to_dl)[1])
         if not mediafile:
             mediafile = name + media_ext
@@ -177,7 +185,7 @@ def main(creditfile='', url='', html='', mediafile='',
         step = 'downloading media file'
     else:
         dl_file_name = ('%s-%s' % (
-            _first(refcredit['artist']), basename(file_to_dl))
+            first(refcredit['artist']), basename(file_to_dl))
         ).replace('%20', ' ')
         print('archive: %s' % dl_file_name)
         step = 'downloading archive file'
@@ -198,7 +206,7 @@ def main(creditfile='', url='', html='', mediafile='',
         pass
     else:
         step = 'extracting file'
-        media_file_to_extract = _first(refcredit.get('media file', ''))
+        media_file_to_extract = first(refcredit.get('media file', ''))
         media_exts = refcredit.get('media ext', [])
 
         def get_media_file_name():
@@ -213,36 +221,14 @@ def main(creditfile='', url='', html='', mediafile='',
             return (not media_exts or splitext(name)[1] in media_exts)
 
         try:
-            if tarfile.is_tarfile(dl_file_name):
-                tar = tarfile.open(dl_file_name)
-                if not media_file_to_extract:
-                    media_file_to_extract = choose([
-                        info.name for info in tar.getmembers()
-                        if info.type == tarfile.REGTYPE
-                        and test_extension(info.name)
-                    ], "'media file' for '%s'" % name,
-                    defaultinput=name)
-
-                tar._extract_member(tar.getmember(media_file_to_extract),
-                                    get_media_file_name())
-
-            elif zipfile.is_zipfile(dl_file_name):
-                zipf = zipfile.ZipFile(dl_file_name)
-                if not media_file_to_extract:
-                    media_file_to_extract = choose([
-                        info.filename for info in zipf.filelist
-                        if info.filename[-1] != '/'
-                        and test_extension(info.filename)
-                    ], "'media file' for '%s'" % name,
-                    defaultinput=name)
-                with zipf.open(zipf.getinfo(media_file_to_extract)) as source, \
-                        open(get_media_file_name(), "wb") as target:
-                    shutil.copyfileobj(source, target)
-            else:
-                print('archive format is not supported')
-                raise KeyError
-
+            unarchiver = Unarchiver(dl_file_name)
+            files = unarchiver.getfiles(test_extension)
+            if not media_file_to_extract:
+                media_file_to_extract = choose(files, "'media file' for '%s'" % name,
+                defaultinput=name)
+            unarchiver.extract_file_as(media_file_to_extract, get_media_file_name())
             refcredit['media file'] = media_file_to_extract
+            _update_title_for_collection(files, 'archive')
         except KeyError:
             print('No media found')
             exit()
@@ -252,6 +238,12 @@ def main(creditfile='', url='', html='', mediafile='',
         if url:
             print("It looks like there is no media related to this page.")
         return
+
+    refcreditup = {}
+    for k in refcredit.keys():
+        if k.endswith('~'):
+            refcreditup[k[:-1]] = refcredit[k]
+    refcredit.update(refcreditup)
 
     step = 'writing changes'
     if refcredit_orig != refcredit:
