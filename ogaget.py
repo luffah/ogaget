@@ -73,7 +73,7 @@ KEYS_XPATH = {
 
 
 def main(creditfile='', url='', html='', mediafile='',
-         directory='', dl=False):
+         directory='', dl=False, renew=False):
     if directory:
        chdir(directory)
        for f in listdir('.'):
@@ -129,7 +129,7 @@ def main(creditfile='', url='', html='', mediafile='',
 
         doc = mkxml.fromstring(html_content)
         files = txtt(doc.xpath(FILES_XPATH))
-        if not refcredit.get('url file'):
+        if not refcredit.get('url file') or renew:
             refcredit['url file'] = choose(files, "'url file' for '%s'" % name,
                     defaultinput=name)
         for key in KEYS_XPATH:
@@ -190,7 +190,8 @@ def main(creditfile='', url='', html='', mediafile='',
         print('archive: %s' % dl_file_name)
         step = 'downloading archive file'
 
-    if file_to_dl and download_requested and not isfile(dl_file_name):
+    if file_to_dl and download_requested and (
+            renew or not isfile(dl_file_name)):
         download(file_to_dl, dl_file_name)
 
     if not isfile(dl_file_name):
@@ -223,7 +224,7 @@ def main(creditfile='', url='', html='', mediafile='',
         try:
             unarchiver = Unarchiver(dl_file_name)
             files = unarchiver.getfiles(test_extension)
-            if not media_file_to_extract:
+            if not media_file_to_extract or renew:
                 media_file_to_extract = choose(files, "'media file' for '%s'" % name,
                 defaultinput=name)
             unarchiver.extract_file_as(media_file_to_extract, get_media_file_name())
@@ -253,50 +254,39 @@ def main(creditfile='', url='', html='', mediafile='',
 
 
 if __name__ == '__main__':
-    args = argparse.Namespace(
-            creditfile='', url='', html='', mediafile='', directory='', dl=False)
+    if (sys.argv[1:2] == ['keys']):
+        print("\n".join(KEYS_HEADER + KEYS_FOOTER))
+        exit(0)
 
-    def _use_argparse():
-        parser = argparse.ArgumentParser(description=__doc__)
-        parser.add_argument('-c', action="store", dest="creditfile",
-                            default=args.creditfile,
-                            help="a file with 'key: comma-separated values'* as content")
-        group = parser.add_mutually_exclusive_group()
-        group.add_argument('-url', action="store", default=args.url,
-                           help="the url of page presenting the media")
-        group.add_argument('-html', action="store", default=args.html,
-                           help="an alternative of the url (for testing)")
-        parser.add_argument('-dl', action="store_true",
-                            help="download the media (choices are prompted if many are found)")
-        parser.add_argument('--recursive', action="store", dest="directory",
-                            help="act recursively")
-        parser.add_argument('-m', action="store", dest='mediafile',
-                            default=args.mediafile,
-                            help="the mediafile (used for naming credit file)")
+    if sys.argv[1:] and not sys.argv[1].startswith('-'):
+        arg = sys.argv[1]
+        sys.argv.insert(1, (
+            arg.endswith('.txt') and '-c' or
+            arg.endswith('.html') and '-html' or
+            '://' in arg and sys.argv.insert(1, '-url') or
+            isdir(arg) and '--recursive' or
+            isfile(arg) and '-m' or
+            '-h'))
 
-        args = parser.parse_args()
-        if not sys.argv[1:] or (args.directory and not isdir(args.directory)):
-            parser.print_help()
-        return args
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('-c', action="store", dest="creditfile", default='',
+                        help="a file with 'key: comma-separated values'* as content")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-url', action="store", default='',
+                       help="the url of page presenting the media")
+    group.add_argument('-html', action="store", default='',
+                       help="an alternative of the url (for testing)")
+    parser.add_argument('-dl', action="store_true",
+                        help="download the media (choices are prompted if many are found)")
+    parser.add_argument('-renew', action="store_true",
+                        help="force a choice prompt (avoid stored infos)")
+    parser.add_argument('--recursive', action="store", dest="directory",
+                        help="act recursively")
+    parser.add_argument('-m', action="store", dest='mediafile', default='',
+                        help="the mediafile (used for naming credit file)")
 
-    if not sys.argv[1:] or sys.argv[1].startswith('-'):
-        args = _use_argparse()
-    else:
-        recursive = '--recursive' in sys.argv
-        for i in sys.argv[1:]:
-            if i == '-h':
-                _use_argparse()
-            elif i in ['-dl']:
-                setattr(args, i.replace('-',''), True)
-            elif not args.creditfile and isfile(i) and i.endswith('.txt'):
-                args.creditfile = i
-            elif not args.html and isfile(i) and i.endswith('.html'):
-                args.html = i
-            elif not args.url and '://' in i:
-                args.url = i
-            elif not args.mediafile and isfile(i):
-                args.mediafile = i
-            elif recursive and isdir(i):
-                args.directory = i
+    args = parser.parse_args()
+    if not sys.argv[1:] or (args.directory and not isdir(args.directory)):
+        parser.print_help()
 
     main(**vars(args))

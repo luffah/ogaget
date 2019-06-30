@@ -49,7 +49,7 @@ class FuzzySelector(object):
         matched = []
         self.suggestions = list(enumerate(options))
         if self.input:
-            regex = re.compile('.*'.join(re.escape(c) for c in self.input),
+            regex = re.compile('.*'.join(re.escape(c) for c in list(self.input)),
                     re.IGNORECASE)
             for idx, l in self.suggestions:
                 match = regex.search(l)

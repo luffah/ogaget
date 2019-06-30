@@ -15,12 +15,14 @@
     ```
 """
 import re
+from os.path import isfile
 INLINE_KEYS = [ 'license' ]
 
 def _get_content(fname):
     ret = []
-    with open(fname, "r") as buf:
-        ret = buf.readlines()
+    if isfile(fname):
+        with open(fname, "r") as buf:
+            ret = buf.readlines()
     return ret
 
 
