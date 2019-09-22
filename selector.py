@@ -15,7 +15,7 @@ def first(gen):
 def get_fname(fname):
     return os.path.split(unquote(fname))[-1]
 
-def choose(files, title, defaultinput='', curses=True):
+def choose(files, title='', defaultinput='', curses=True):
     if len(files) == 1:
         return files[0]
     else:
@@ -120,3 +120,11 @@ class FuzzySelector(object):
         if not self.update(self.items):
             self.input = ''
         return curses.wrapper(self.curse_ui)
+
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 2:
+        print(choose(sys.argv[2:], title=sys.argv[1]))
+    else:
+        print('usage : selector.py "title" choices...')

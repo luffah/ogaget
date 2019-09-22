@@ -1,5 +1,5 @@
 # ogaget
-Note: this tool is an alternative to the creation of collection in OGA and may not be adapted for all usage.
+Note: this tool is an unofficial alternative to the creation of collection in OGA and may not be adapted for all usage.
 
 A tool to store credits related to media from OpenGameArt.org
 
@@ -7,14 +7,14 @@ A tool to store credits related to media from OpenGameArt.org
 ## Get all (credit file + media) in one command
 ```sh
 # e.g. get/update some-title.txt (credit file) and some-title.ogg
-./ogaget.py https://opengameart.org/content/some-title -dl
+./ogaget https://opengameart.org/content/some-title -dl
 ```
 ## Get the media later
 ```sh
 # create a credit file from a media on OGA
-./ogaget.py https://opengameart.org/content/some-title
+./ogaget https://opengameart.org/content/some-title
 # download the media (e.g. some-title.ogg)
-./ogaget.py some-title.txt -dl
+./ogaget some-title.txt -dl
 ```
 
 

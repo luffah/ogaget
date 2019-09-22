@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# Copyright (C) 2019 luffah <contact@luffah.xyz>
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 """
     define (parse and write) the format of a credit file
     ```

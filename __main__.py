@@ -1,21 +1,8 @@
 #!/usr/bin/env python3
-# encoding: utf-8
-"""A tool to store credits related to a file found in OpenGameArt.org"""
+# -*- coding: utf-8 -*-
 # Copyright (C) 2019 luffah <contact@luffah.xyz>
-# Author: luffah <contact@luffah.xyz>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
+"""A tool to store credits related to a file found in OpenGameArt.org"""
 import sys
 import signal
 from os.path import isfile, dirname, basename, splitext, isdir
@@ -24,10 +11,10 @@ import argparse
 import mimetypes
 import lxml.html as mkxml
 from lxml.html import HtmlElement as Element
-from common import choose, first, get_fname
-from common.unarchiver import Unarchiver
-from common.www import request_url, download
-from common.credit_file import parse, write, _get_content
+from .selector import choose, first, get_fname
+from .unarchiver import Unarchiver
+from .www import request_url, download
+from .credit_file import parse, write, _get_content
 
 ALWAYS_GET = False
 
@@ -268,7 +255,7 @@ if __name__ == '__main__':
             isfile(arg) and '-m' or
             '-h'))
 
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(prog='ogaget', description=__doc__)
     parser.add_argument('-c', action="store", dest="creditfile", default='',
                         help="a file with 'key: comma-separated values'* as content")
     group = parser.add_mutually_exclusive_group()
