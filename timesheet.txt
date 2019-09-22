@@ -1,0 +1,3 @@
+- initial commit (conception & development) : 10 h
+- first debugging phase : 6 h
+- option -renew : < 1 h
