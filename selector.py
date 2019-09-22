@@ -125,6 +125,6 @@ class FuzzySelector(object):
 if __name__ == '__main__':
     import sys
     if len(sys.argv) > 2:
-        print(choose(sys.argv[2:], title=sys.argv[1]))
+        print(choose(sys.argv[2:], title=sys.argv[1]), file=sys.stderr)
     else:
-        print('usage : selector.py "title" choices...')
+        print('usage : selector.py "title" choices...\n', file=sys.stderr)
