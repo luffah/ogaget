@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
+import os
+import sys
+
+if __name__ == '__main__':
+    TTY = os.environ.get('TTY', False) or os.ttyname(0)
+    if TTY:  # save original stdout fd and replace with tty fd
+        STDINF = os.dup(0)
+        STDOUTF = os.dup(1)
+        with open(TTY, 'rb') as inf, open(TTY, 'wb') as outf:
+            os.dup2(inf.fileno(), 0)
+            os.dup2(outf.fileno(), 1)
+            # os.dup2(outf.fileno(), 2)
+
 import re
 import curses
-import os
 from urllib.parse import unquote
 
 def first(gen):
@@ -123,8 +135,11 @@ class FuzzySelector(object):
 
 
 if __name__ == '__main__':
-    import sys
     if len(sys.argv) > 2:
-        print(choose(sys.argv[2:], title=sys.argv[1]), file=sys.stderr)
+        result = choose(sys.argv[2:], title=sys.argv[1])
+        if TTY:  # restore original stdout descriptor
+            os.dup2(STDINF, 0)
+            os.dup2(STDOUTF, 1)
+        print(result, file=sys.__stdout__)
     else:
         print('usage : selector.py "title" choices...\n', file=sys.stderr)
