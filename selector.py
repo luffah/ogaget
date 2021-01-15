@@ -135,6 +135,11 @@ class FuzzySelector(object):
 
 
 if __name__ == '__main__':
+    import signal
+    def keyboardInterruptHandler(signal, frame):
+        exit(0)
+    signal.signal(signal.SIGINT, keyboardInterruptHandler)
+
     if len(sys.argv) > 2:
         result = choose(sys.argv[2:], title=sys.argv[1])
         if TTY:  # restore original stdout descriptor
