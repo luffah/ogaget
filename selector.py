@@ -3,7 +3,11 @@ import os
 import sys
 
 if __name__ == '__main__':
-    TTY = os.environ.get('TTY', False) or os.ttyname(0)
+    if len(sys.argv) < 2:
+        print('usage : ls | selector.py Choose file\n', file=sys.stderr)
+        exit()
+    choices = [ f[:-1] for f in sys.stdin.readlines() ]
+    TTY = os.environ.get('TTY', False) or os.ttyname(2)
     if TTY:  # save original stdout fd and replace with tty fd
         STDINF = os.dup(0)
         STDOUTF = os.dup(1)
@@ -24,14 +28,11 @@ def first(gen):
     a_list = list(gen)
     return a_list[0] if a_list else None
 
-def get_fname(fname):
-    return os.path.split(unquote(fname))[-1]
-
 def choose(files, title='', defaultinput='', curses=True):
     if len(files) == 1:
         return files[0]
     else:
-        pretty_files = [get_fname(f) for f in files]
+        pretty_files = [unquote(f) for f in files]
         if curses:
             return files[FuzzySelector().get(pretty_files, title,
                 defaultinput=defaultinput or '')]
@@ -140,11 +141,8 @@ if __name__ == '__main__':
         exit(0)
     signal.signal(signal.SIGINT, keyboardInterruptHandler)
 
-    if len(sys.argv) > 2:
-        result = choose(sys.argv[2:], title=sys.argv[1])
-        if TTY:  # restore original stdout descriptor
-            os.dup2(STDINF, 0)
-            os.dup2(STDOUTF, 1)
-        print(result, file=sys.__stdout__)
-    else:
-        print('usage : selector.py "title" choices...\n', file=sys.stderr)
+    result = choose(choices, title=" ".join(sys.argv[1:]))
+    if TTY:  # restore original stdout descriptor
+        os.dup2(STDINF, 0)
+        os.dup2(STDOUTF, 1)
+    print(result, file=sys.__stdout__)
