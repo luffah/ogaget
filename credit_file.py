@@ -18,8 +18,10 @@
     ```
 """
 import re
+import os
 from os.path import isfile
-INLINE_KEYS = [ 'license' ]
+INLINE_KEYS = ['license']
+
 
 def _get_content(fname):
     ret = []
@@ -57,7 +59,7 @@ def write(fname, infos, order):
     _write(fname, ret)
 
 
-def parse(fpath, with_order=True, return_ordered_keys=False):
+def parse(fpath, with_order=False, return_ordered_keys=False):
     """
     Parse a credit file.
     return a dictionnary ({key:[list(values), order of appearance]}
@@ -73,53 +75,85 @@ def parse(fpath, with_order=True, return_ordered_keys=False):
 
     (key, currval) = (None, [])
     parsed = {}
-    tmpparsed = {}
+    curparsed = parsed  # just a pointer
+    curindent = 0
+    parent_keys = []
+    tabwitdth = 4
     order = 0
-    meta = False
     with_order = with_order or return_ordered_keys
+    order_maxdepth = 1
+    ordering = False
+
+    def _consume():
+        nonlocal key
+        nonlocal currval
+        curparsed[key] = (currval, order) if ordering else currval
+        (key, currval) = (None, [])
+
+    def _add_subset():
+        nonlocal curindent
+        nonlocal curparsed
+        if key not in curparsed:
+            curparsed[key] = ({}, order) if ordering else {}
+        curparsed = curparsed[key][0] if ordering else curparsed[key]
+        curindent += 1
+        parent_keys.append(key)
+
+    def _leave_subset(indent):
+        nonlocal curindent
+        nonlocal curparsed
+        while indent < curindent:
+            parent_keys.pop()
+            curindent -= 1
+        curparsed = parsed
+        for k in parent_keys:
+            curparsed = curparsed[k]
+            if ordering:
+                curparsed = curparsed[0]
+
     for line in _get_content(fpath):
-        if line.startswith('#'):
+        if line.startswith('#'):  # drop comments
             continue
 
-        if key and not currval and line.startswith('   '):
-            meta = True
-            spl = line.split(':')
-            tmpkey = spl[0].strip()
-            tmpparsed[tmpkey] = (":".join(spl[1:])).strip()
-            continue
+        spaces = (len(line) - len(line.lstrip()))
+        indent_rest = spaces % 4
+        indent = int(spaces / tabwitdth)
 
-        if meta:
-            parsed[key] = (tmpparsed, order) if with_order else tmpparsed
-            meta = False
-            key = None
-            tmpparsed = {}
+        ordering = with_order and len(parent_keys) < order_maxdepth
 
-        if line.startswith(' '):
-            if key:
+        if indent_rest:
+            if key:  # multiline string props
                 currval += _to_list(line)
             continue
 
         if currval:
-            parsed[key] = (currval, order) if with_order else currval
-            (key, currval) = (None, [])
+            _consume()
 
-        if ':' in line:
+        if indent < curindent:
+            _leave_subset(indent)
+
+        if key and indent == curindent + 1:
+            _add_subset()
+
+        if ':' in line:  # define key
             spl = line.split(':')
             key = spl[0].strip()
             order += 1
             if re.match("[^:]*:<.*", line):
-                parsed[key] = (None, order) if with_order else None
                 (key, currval) = (None, [])
             else:
                 currval = _to_list(":".join(spl[1:]))
     if currval:
-        parsed[key] = (currval, order) if with_order else currval
-    if meta:
-        parsed[key] = (tmpparsed, order) if with_order else tmpparsed
+        _consume()
 
+    if os.environ.get('DEBUG', False):
+        from pprint import pprint
+        print('------------')
+        pprint(parsed)
+        print('------------')
     if return_ordered_keys:
         return (
-            {k: v[0] for k,v in parsed.items()},
+            {k: v[0] for k, v in parsed.items()},
             sorted(parsed.keys(), key=lambda k: parsed[k][1])
         )
     else:

@@ -5,7 +5,7 @@
 """A tool to store credits related to a file found in OpenGameArt.org"""
 import sys
 import signal
-from os.path import isfile, dirname, basename, splitext, isdir
+from os.path import isfile, basename, splitext, isdir
 from os import listdir, chdir
 import argparse
 import mimetypes
@@ -61,18 +61,23 @@ KEYS_XPATH = {
 
 def main(creditfile='', url='', html='', mediafile='',
          directory='', dl=False, renew=False):
+    """
+    main . what else ?
+    mmm. pylint dislike the fact of using command args as function argument
+
+    Function : Fetch missing datas / credit informations
+    """
     if directory:
-       chdir(directory)
-       for f in listdir('.'):
-           if isfile(f) and f.endswith('.txt'):
-               main(creditfile=f, dl=dl)
-           elif isdir(f):
-               main(directory=f, dl=dl)
-       chdir('..')
-       return
+        chdir(directory)
+        for fname in listdir('.'):
+            if isfile(fname) and fname.endswith('.txt'):
+                main(creditfile=fname, dl=dl)
+            elif isdir(fname):
+                main(directory=fname, dl=dl)
+        chdir('..')
+        return
     print('*' * 34)
 
-    """ Fetch missing datas / credit informations """
     file_to_dl = False
     download_requested = ALWAYS_GET or dl
 
@@ -80,14 +85,15 @@ def main(creditfile='', url='', html='', mediafile='',
         return splitext(get_fname(first(fname)).replace('_', ' '))[0]
 
     def _update_title_for_collection(files, ctx):
-        titles = set([splitext(f)[0] for f in files])
+        titles = set(splitext(f)[0] for f in files)
         if len(titles) > 1:
             if ctx == 'url':
                 refcredit['collection~'] = refcredit['title~']
                 refcredit['title~'] = _get_title(refcredit['url file'])
             elif ctx == 'archive':
                 if 'collection~' in refcredit:
-                    refcredit['sub collection'] = _get_title(refcredit['url file'])
+                    refcredit['sub collection'] = _get_title(
+                        refcredit['url file'])
                 else:
                     refcredit['collection~'] = refcredit['title~']
 
@@ -118,7 +124,7 @@ def main(creditfile='', url='', html='', mediafile='',
         files = txtt(doc.xpath(FILES_XPATH))
         if not refcredit.get('url file') or renew:
             refcredit['url file'] = choose(files, "'url file' for '%s'" % name,
-                    defaultinput=name)
+                                           defaultinput=name)
         for key in KEYS_XPATH:
             postproc = KEYS_POSTPROC.get(key, lambda a: a)
             refcredit[key] = postproc(txtt(doc.xpath(KEYS_XPATH[key])))
@@ -130,11 +136,13 @@ def main(creditfile='', url='', html='', mediafile='',
         first(splitext(basename(html)))
     )
 
-    def keyboardInterruptHandler(signal, frame):
+    def keyboard_interrupt_handler(sig, frame):
+        if sig or frame:
+            pass
         print("ogaget has been interrupted while %s for '%s'" % (step, name))
-        exit(0)
+        sys.exit(0)
 
-    signal.signal(signal.SIGINT, keyboardInterruptHandler)
+    signal.signal(signal.SIGINT, keyboard_interrupt_handler)
     step = 'parsing datas'
 
     # first get refcredit content
@@ -171,8 +179,9 @@ def main(creditfile='', url='', html='', mediafile='',
         print('media  : %s' % mediafile)
         step = 'downloading media file'
     else:
-        dl_file_name = ('%s-%s' % (
-            first(refcredit['artist']), basename(file_to_dl))
+        dl_file_name = (
+            '%s-%s' % (
+                first(refcredit['artist']), basename(file_to_dl))
         ).replace('%20', ' ')
         print('archive: %s' % dl_file_name)
         step = 'downloading archive file'
@@ -206,20 +215,21 @@ def main(creditfile='', url='', html='', mediafile='',
             return tgt
 
         def test_extension(name):
-            return (not media_exts or splitext(name)[1] in media_exts)
+            return not media_exts or splitext(name)[1] in media_exts
 
         try:
             unarchiver = Unarchiver(dl_file_name)
             files = unarchiver.getfiles(test_extension)
             if not media_file_to_extract or renew:
                 media_file_to_extract = choose(files, "'media file' for '%s'" % name,
-                defaultinput=name)
-            unarchiver.extract_file_as(media_file_to_extract, get_media_file_name())
+                                               defaultinput=name)
+            unarchiver.extract_file_as(
+                media_file_to_extract, get_media_file_name())
             refcredit['media file'] = media_file_to_extract
             _update_title_for_collection(files, 'archive')
         except KeyError:
             print('No media found')
-            exit()
+            sys.exit(1)
 
     # something is wrong, explian what
     if not name:
@@ -240,10 +250,13 @@ def main(creditfile='', url='', html='', mediafile='',
         ] + KEYS_FOOTER)
 
 
-if __name__ == '__main__':
-    if (sys.argv[1:2] == ['keys']):
+def parse_args():
+    """
+    parse arguments and options / define usage
+    """
+    if sys.argv[1:2] == ['keys']:
         print("\n".join(KEYS_HEADER + KEYS_FOOTER))
-        exit(0)
+        sys.exit(0)
 
     if sys.argv[1:] and not sys.argv[1].startswith('-'):
         arg = sys.argv[1]
@@ -277,3 +290,7 @@ if __name__ == '__main__':
         parser.print_help()
 
     main(**vars(args))
+
+
+if __name__ == '__main__':
+    parse_args()
